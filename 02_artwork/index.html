@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鼻歌検索アプリ</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+
+        #record-button,
+        #result {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+
+        #album-cover {
+            margin-top: 10px;
+            width: 150px;
+            height: 150px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <h2>鼻歌検索アプリ</h2>
+        <button id="record-button">録音開始</button>
+        <p id="status">準備完了</p>
+        <p id="result">ここに結果が表示されます</p>
+        <img id="album-cover" alt="アルバムカバー">
+    </div>
+
+    <script>
+        const API_TOKEN = "5b2813256bf22676ce9628aadc635320"; // AudD APIトークンを入力
+        const API_URL = "https://api.audd.io/";
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        document.getElementById("record-button").onclick = async function () {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        };
+
+        async function startRecording() {
+            document.getElementById("status").textContent = "録音中...";
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                audioChunks = [];
+                await sendAudioToApi(audioBlob);
+            };
+
+            mediaRecorder.start();
+        }
+
+        function stopRecording() {
+            document.getElementById("status").textContent = "録音停止";
+            mediaRecorder.stop();
+        }
+
+        async function sendAudioToApi(audioBlob) {
+            document.getElementById("status").textContent = "検索中...";
+            const formData = new FormData();
+            formData.append("file", audioBlob);
+            formData.append("api_token", API_TOKEN);
+            formData.append("return", "apple_music,spotify");
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+                const albumCover = document.getElementById("album-cover");
+
+                if (result.status === "success" && result.result) {
+                    const appleMusicData = result.result.apple_music;
+                    const spotifyData = result.result.spotify;
+
+                    let resultText = `曲名: ${result.result.title} アーティスト: ${result.result.artist}`;
+
+                    if (appleMusicData) {
+                        resultText += `<br>Apple Music: <a href="${appleMusicData.url}">リンク</a>`;
+                        albumCover.src = appleMusicData.artwork.url.replace("{w}x{h}", "150x150");
+                        albumCover.style.display = "block";
+                    } else if (spotifyData) {
+                        resultText += `<br>Spotify: <a href="${spotifyData.external_urls.spotify}">リンク</a>`;
+                        albumCover.src = spotifyData.album.images[0].url;
+                        albumCover.style.display = "block";
+                    } else {
+                        albumCover.style.display = "none";
+                    }
+
+                    document.getElementById("result").innerHTML = resultText;
+                } else {
+                    document.getElementById("result").textContent = "一致する楽曲が見つかりませんでした。";
+                    albumCover.style.display = "none";
+                }
+            } catch (error) {
+                document.getElementById("result").textContent = "エラーが発生しました。再試行してください。";
+                console.error("Error:", error);
+            } finally {
+                document.getElementById("status").textContent = "準備完了";
+            }
+        }
+    </script>
+</body>
+
+</html>

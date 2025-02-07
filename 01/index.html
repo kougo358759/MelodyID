@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鼻歌検索アプリ</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+
+        #record-button,
+        #result {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #status {
+            margin-top: 10px;
+        }
+
+        .link {
+            margin-top: 10px;
+            color: #1a73e8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <h2>鼻歌検索アプリ</h2>
+        <button id="record-button">録音開始</button>
+        <p id="status">準備完了</p>
+        <p id="result">ここに検索結果が表示されます</p>
+        <div id="links"></div>
+    </div>
+
+    <script>
+        const API_TOKEN = "5b2813256bf22676ce9628aadc635320";  // AudD APIのトークンをここに入力
+        const API_URL = "https://api.audd.io/";
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        // 録音ボタンの設定
+        document.getElementById("record-button").onclick = async function () {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        };
+
+        // 録音開始処理
+        async function startRecording() {
+            document.getElementById("status").textContent = "録音中...";
+            document.getElementById("record-button").textContent = "録音停止";
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                audioChunks = [];
+                await sendAudioToApi(audioBlob);
+            };
+
+            mediaRecorder.start();
+        }
+
+        // 録音停止処理
+        function stopRecording() {
+            document.getElementById("status").textContent = "録音停止";
+            document.getElementById("record-button").textContent = "録音開始";
+            mediaRecorder.stop();
+        }
+
+        // 音声データをAudD APIに送信
+        async function sendAudioToApi(audioBlob) {
+            document.getElementById("status").textContent = "検索中...";
+            document.getElementById("links").innerHTML = '';  // リンクをクリア
+            const formData = new FormData();
+            formData.append("file", audioBlob);
+            formData.append("api_token", API_TOKEN);
+            formData.append("return", "apple_music,spotify,youtube");
+
+            try {
+                const response = await fetch(API_URL + "recognize", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (result.status === "success" && result.result) {
+                    document.getElementById("result").textContent = `曲名: ${result.result.title} アーティスト: ${result.result.artist}`;
+                    displayLinks(result.result);
+                } else {
+                    document.getElementById("result").textContent = "一致する楽曲が見つかりませんでした。";
+                }
+            } catch (error) {
+                document.getElementById("result").textContent = "エラーが発生しました。再試行してください。";
+                console.error("Error:", error);
+            } finally {
+                document.getElementById("status").textContent = "準備完了";
+            }
+        }
+
+        // リンクを表示する関数
+        function displayLinks(result) {
+            const linksContainer = document.getElementById("links");
+
+            if (result.apple_music) {
+                const appleLink = document.createElement("a");
+                appleLink.href = result.apple_music.url;
+                appleLink.textContent = "Apple Musicで聴く";
+                appleLink.className = "link";
+                appleLink.target = "_blank";
+                linksContainer.appendChild(appleLink);
+            }
+
+            if (result.spotify) {
+                const spotifyLink = document.createElement("a");
+                spotifyLink.href = result.spotify.external_urls.spotify;
+                spotifyLink.textContent = "Spotifyで聴く";
+                spotifyLink.className = "link";
+                spotifyLink.target = "_blank";
+                linksContainer.appendChild(spotifyLink);
+            }
+
+            if (result.youtube) {
+                const youtubeLink = document.createElement("a");
+                youtubeLink.href = result.youtube;
+                youtubeLink.textContent = "YouTubeで聴く";
+                youtubeLink.className = "link";
+                youtubeLink.target = "_blank";
+                linksContainer.appendChild(youtubeLink);
+            }
+        }
+    </script>
+</body>
+
+</html>
